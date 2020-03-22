@@ -47,25 +47,16 @@ public class ServerThread implements Runnable {
         try {
             // uzimamo samo prvu liniju zahteva, da bismo izvukli parametar
             String komanda = in.readLine();
-            System.out.println("Komanda je : " + komanda);
             String response = "";
 
-            HttpResponse<String> responseQuote = sendGet();
+            String path = komanda.split(" ")[1];
 
-            if (responseQuote.statusCode() != 200) {
-                ObjectMapper mapper = new ObjectMapper();
-                Map jsonMap = mapper.readValue(responseQuote.body(), Map.class);
-
-                Map quoteObj = ((Map)jsonMap.get("error"));
-                response = napraviOdogovor(komanda, responseQuote.statusCode(),quoteObj.get("message").toString());
+            if (path.equals("/")) {
+                response = homeRoute();
+            }else if (path.equals("/qod")) {
+                response = qodRoute();
             }else {
-                ObjectMapper mapper = new ObjectMapper();
-                Map jsonMap = mapper.readValue(responseQuote.body(), Map.class);
-
-                List quoteObj = (List)((Map)jsonMap.get("contents")).get("quotes");
-
-                System.out.println("CAO " + ((Map)quoteObj.get(0)).get("quote"));
-                response = napraviOdogovor(komanda, responseQuote.statusCode(), ((Map)quoteObj.get(0)).get("quote").toString());
+                response = napraviError(404);
             }
             //treba odgovoriti browser-u po http protokolu:
             out.println(response);
@@ -73,15 +64,43 @@ public class ServerThread implements Runnable {
             in.close();
             out.close();
             client.close();
-
-        } catch (IOException e) {
-            e.printStackTrace();
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private String napraviOdogovor(String komanda, int code, String quote) {
+    public String homeRoute() {
+        return napraviRedirect("/qod");
+    }
+
+    public String qodRoute() throws Exception{
+        String response = "";
+        HttpResponse<String> responseQuote = sendGet();
+
+        if (responseQuote.statusCode() != 200) {
+            ObjectMapper mapper = new ObjectMapper();
+            Map jsonMap = mapper.readValue(responseQuote.body(), Map.class);
+
+            Map quoteObj = ((Map)jsonMap.get("error"));
+            response = napraviOdogovor(responseQuote.statusCode(),quoteObj.get("message").toString());
+        }else {
+            ObjectMapper mapper = new ObjectMapper();
+            Map jsonMap = mapper.readValue(responseQuote.body(), Map.class);
+
+            List quoteObj = (List)((Map)jsonMap.get("contents")).get("quotes");
+
+            response = napraviOdogovor(responseQuote.statusCode(), ((Map)quoteObj.get(0)).get("quote").toString());
+        }
+        return response;
+    }
+
+    private String napraviRedirect(String redirectTo) {
+        String retVal = "HTTP/1.1 301 OK\r\nLocation: " + redirectTo + "\r\n\r\n";
+
+        return retVal;
+    }
+
+    private String napraviOdogovor(int code, String quote) {
         String retVal = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
 
         retVal += "<html><head><title>Odgovor servera</title></head>\n";
@@ -89,8 +108,15 @@ public class ServerThread implements Runnable {
         retVal += "<h1>Message : " + quote + "</h1>\n";
         retVal += "</body></html>";
 
-        System.out.println("HTTP odgovor:");
-        System.out.println(retVal);
+        return retVal;
+    }
+
+    private String napraviError(int code) {
+        String retVal = "HTTP/1.1 " + code + " OK\r\nContent-Type: text/html\r\n\r\n";
+
+        retVal += "<html><head><title>Odgovor servera</title></head>\n";
+        retVal += "<body><h1>Error code : " + code + "</h1>\n";
+        retVal += "</body></html>";
 
         return retVal;
     }
@@ -99,15 +125,10 @@ public class ServerThread implements Runnable {
         HttpRequest request = HttpRequest.newBuilder()
                 .GET()
                 .uri(URI.create("https://quotes.rest/qod"))
-                .setHeader("User-Agent", "Java 11 HttpClient Bot")
-                .setHeader("Accept","json")
+                .setHeader("Accept","application/json")
                 .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        // print status code
-        System.out.println(response.statusCode());
-        // print response body
-        System.out.println(response.body());
 
         return response;
     }
