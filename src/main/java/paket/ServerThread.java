@@ -25,37 +25,32 @@ public class ServerThread implements Runnable {
 
     public ServerThread(Socket sock) {
         this.client = sock;
-
         try {
-            //inicijalizacija ulaznog toka
-            in = new BufferedReader(
-                    new InputStreamReader(
-                            client.getInputStream()));
-
-            //inicijalizacija izlaznog sistema
-            out = new PrintWriter(
-                    new BufferedWriter(
-                            new OutputStreamWriter(
-                                    client.getOutputStream())), true);
+            in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+            out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(client.getOutputStream())), true);
         } catch (IOException e) {
             e.printStackTrace();
         }
-
     }
 
     public void run() {
         try {
-            // uzimamo samo prvu liniju zahteva, da bismo izvukli parametar
             String komanda = in.readLine();
             String response = "";
 
-            String path = komanda.split(" ")[1];
+            if (komanda == null) return;
 
-            if (path.equals("/")) {
+            String path = komanda.split(" ")[1];
+            String method = komanda.split(" ")[0];
+
+            if (!method.equals("GET")){
+                response = napraviError(405);
+            }
+            if (path.equals("/") && method.equals("GET")) {
                 response = homeRoute();
-            }else if (path.equals("/qod")) {
+            }else if (path.equals("/qod") && method.equals("GET")) {
                 response = qodRoute();
-            }else {
+            }else if (method.equals("GET")){
                 response = napraviError(404);
             }
             //treba odgovoriti browser-u po http protokolu:
@@ -95,7 +90,7 @@ public class ServerThread implements Runnable {
     }
 
     private String napraviRedirect(String redirectTo) {
-        String retVal = "HTTP/1.1 301 OK\r\nLocation: " + redirectTo + "\r\n\r\n";
+        String retVal = "HTTP/1.1 301 ERROR\r\nLocation: " + redirectTo + "\r\n\r\n";
 
         return retVal;
     }
@@ -112,7 +107,12 @@ public class ServerThread implements Runnable {
     }
 
     private String napraviError(int code) {
-        String retVal = "HTTP/1.1 " + code + " OK\r\nContent-Type: text/html\r\n\r\n";
+        String errorMsg;
+        if (code == 404) errorMsg = "Not Found";
+        else if (code == 405) errorMsg = "Method Not Allowed";
+        else errorMsg = "Error";
+
+        String retVal = "HTTP/1.1 " + code + " " + errorMsg + "\r\nContent-Type: text/html\r\n\r\n";
 
         retVal += "<html><head><title>Odgovor servera</title></head>\n";
         retVal += "<body><h1>Error code : " + code + "</h1>\n";
@@ -128,9 +128,7 @@ public class ServerThread implements Runnable {
                 .setHeader("Accept","application/json")
                 .build();
 
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        return response;
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
 }
